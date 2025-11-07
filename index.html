@@ -168,311 +168,211 @@
   </div>
 
   <!-- 实时后端：Firebase Firestore（模块版 SDK） -->
-  <script type="module">
-    /************ 1) 初始化 Firebase ************/
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
-    import {
-      getFirestore, collection, addDoc, serverTimestamp,
-      query, orderBy, onSnapshot, getDocs, deleteDoc, doc,
-      enableIndexedDbPersistence
-    } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
+<script type="module">
+  /************ 0) 导入 Firebase SDK（模块版） ************/
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
+  import {
+    getAuth, signInAnonymously, onAuthStateChanged
+  } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js";
+  import {
+    getFirestore, collection, addDoc, serverTimestamp,
+    query, orderBy, onSnapshot, getDocs, deleteDoc, doc,
+    enableIndexedDbPersistence
+  } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
 
-    // TODO: 填写你的 Firebase 配置（从 Firebase 控制台拷贝）
-    const firebaseConfig = {
-      apiKey: "YOUR_API_KEY",
-      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-      projectId: "YOUR_PROJECT_ID",
-      storageBucket: "YOUR_PROJECT_ID.appspot.com",
-      messagingSenderId: "YOUR_SENDER_ID",
-      appId: "YOUR_APP_ID"
-    };
+  /************ 1) 填写你的 Firebase 配置 ************/
+  // Firebase 控制台 → Project settings → Your apps → Web app → SDK config
+  const firebaseConfig = {
+  apiKey: "AIzaSyCeKYaCD48fNkxt5tyvvbrNj8GRoT4MXRI",
+  authDomain: "yanshi-dd64f.firebaseapp.com",
+  projectId: "yanshi-dd64f",
+  storageBucket: "yanshi-dd64f.firebasestorage.app",
+  messagingSenderId: "413244464008",
+  appId: "1:413244464008:web:63b9890474f9125649f83d",
+  measurementId: "G-XDQ4W8QEDT"
+};
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+  enableIndexedDbPersistence(db).catch(()=>{ /* 多 Tab 冲突时忽略 */ });
 
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-
-    // 可选：启用离线缓存（浏览器内部仍使用 IndexedDB 做缓存）
-    enableIndexedDbPersistence(db).catch((err) => {
-      // 多 tab 冲突等情况会失败，不影响在线可用
-      console.warn("IndexedDB 持久化不可用：", err?.code || err);
+  /************ 2) UI：标签切换（保留你原逻辑） ************/
+  document.querySelectorAll('.tab').forEach(tab=>{
+    tab.addEventListener('click', ()=>{
+      document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById(tab.dataset.tab).classList.add('active');
     });
+  });
 
-    // 全局集合引用
+  /************ 3) 登录（匿名）后再开始读写 ************/
+  onAuthStateChanged(auth, (user)=>{
+    if (user) {
+      boot(user.uid);
+    } else {
+      signInAnonymously(auth).catch(err=>{
+        console.error('匿名登录失败：', err);
+        showStatus('无法连接云端（登录失败）', 'error');
+      });
+    }
+  });
+
+  async function boot(uid){
     const colRef = collection(db, "observations");
 
-    /************ 2) UI：标签切换 ************/
-    document.querySelectorAll('.tab').forEach(tab=>{
-      tab.addEventListener('click', ()=>{
-        document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
-        tab.classList.add('active');
-        document.getElementById(tab.dataset.tab).classList.add('active');
-      });
-    });
-
-    /************ 3) 学生端：提交记录（写云端） ************/
+    // ——学生端：提交（写云端 Firestore）——
     document.querySelectorAll('.pair-submit-btn').forEach(btn=>{
       btn.addEventListener('click', async function(e){
         e.preventDefault();
         const n = this.getAttribute('data-pair');
         const methodInput = document.getElementById(`method${n}`);
         const aspectInput = document.getElementById(`aspect${n}`);
-
-        const method = (methodInput.value || "").trim();
-        const aspect = (aspectInput.value || "").trim();
-
+        const method = (methodInput.value||'').trim();
+        const aspect = (aspectInput.value||'').trim();
         if(!method){ alert('请填写观察方法！'); methodInput.focus(); return; }
         if(!aspect){ alert('请填写观察特征！'); aspectInput.focus(); return; }
 
-        const now = new Date();
-        const record = {
-          method,
-          aspect,
-          date: now.toLocaleDateString('zh-CN'),
-          // 以服务器时间为准，保证各端一致性
-          timestamp: serverTimestamp(),
-          createdAt: serverTimestamp()
-        };
-
         showStatus('正在提交数据...', 'success');
         try{
-          await addDoc(colRef, record);
-          showStatus('提交成功！数据已保存到云端并实时同步', 'success');
-          // 可选：清空输入
-          methodInput.value = '';
-          aspectInput.value = '';
+          await addDoc(colRef, {
+            method, aspect,
+            date: new Date().toLocaleDateString('zh-CN'),
+            timestamp: serverTimestamp(),   // 排序用服务器时间
+            createdAt: serverTimestamp(),
+            uid
+          });
+          showStatus('提交成功！多端已同步', 'success');
+          methodInput.value = ''; aspectInput.value = '';
         }catch(err){
-          console.error('提交失败：', err);
-          showStatus('提交失败，请检查网络后重试。', 'error');
+          console.error(err);
+          showStatus('提交失败，请检查网络', 'error');
         }
-        setTimeout(clearStatus, 3000);
+        setTimeout(clearStatus, 2500);
       });
     });
 
-    /************ 4) 教师端：实时订阅云端变化 ************/
-    // 订阅整个集合的变化（按时间倒序）
-    const q = query(colRef, orderBy('timestamp','desc'));
-    let unsubscribe = null;
-
-    function startRealtimeSubscription(){
-      if (unsubscribe) return; // 避免重复订阅
-      unsubscribe = onSnapshot(q, (snapshot)=>{
-        const records = snapshot.docs.map(d=>{
-          const data = d.data();
-          // 兼容服务器时间戳未写入前的瞬间状态
-          const millis = data.timestamp?.toMillis ? data.timestamp.toMillis() : 0;
-          return { id: d.id, ...data, timestamp: millis };
-        });
-        updateTeacherDashboard(records);
-      }, (error)=>{
-        console.error('实时订阅失败：', error);
-        showStatus('实时数据订阅失败，请刷新或重试', 'error');
-        setTimeout(clearStatus, 3000);
-      });
-    }
-
-    // 默认直接开启订阅（无论在哪个标签页，都能保持最新）
-    startRealtimeSubscription();
-
-    /************ 5) 教师端：按钮动作 ************/
-    document.getElementById('refresh-btn').addEventListener('click', async ()=>{
-      // 手动刷新一次（通常不需要，因为有 onSnapshot）
-      const snapshot = await getDocs(q);
-      const records = snapshot.docs.map(d=>{
-        const data = d.data();
-        const millis = data.timestamp?.toMillis ? data.timestamp.toMillis() : 0;
-        return { id: d.id, ...data, timestamp: millis };
-      });
-      updateTeacherDashboard(records);
-      showStatus('数据已刷新！', 'success');
-      setTimeout(clearStatus, 3000);
-    });
-
+    // ——教师端：清空（逐条删）——
     document.getElementById('clear-btn').addEventListener('click', async ()=>{
-      if(!confirm('确定要清空所有学生提交的记录吗？此操作不可恢复！')) return;
+      if(!confirm('确定要清空所有记录吗？')) return;
       showStatus('正在清空数据...', 'success');
       try{
-        const snapshot = await getDocs(colRef);
-        // Firestore 没有一次性清空集合的 API，逐条删除
-        await Promise.all(snapshot.docs.map(docSnap => deleteDoc(doc(db, 'observations', docSnap.id))));
-        showStatus('所有记录已清空！', 'success');
+        const snap = await getDocs(colRef);
+        await Promise.all(snap.docs.map(d=> deleteDoc(doc(db,'observations', d.id))));
+        showStatus('已清空', 'success');
       }catch(err){
-        console.error('清空失败：', err);
-        showStatus('清空失败，请重试。', 'error');
+        console.error(err);
+        showStatus('清空失败', 'error');
       }
-      setTimeout(clearStatus, 3000);
+      setTimeout(clearStatus, 2500);
     });
 
-    /************ 6) 统计与分析（沿用你原先的逻辑） ************/
-    function updateTeacherDashboard(records){
-      const dashboard = document.querySelector('.teacher-dashboard');
-      if(!records || records.length === 0){
-        dashboard.innerHTML = `
-          <div class="teacher-controls">
-            <button class="teacher-btn refresh-btn" id="refresh-btn"><i class="fas fa-sync-alt"></i> 刷新数据</button>
-            <button class="teacher-btn clear-btn" id="clear-btn"><i class="fas fa-trash-alt"></i> 清空数据</button>
-          </div>
-          <div class="no-data">
-            <i class="fas fa-clipboard-list" style="font-size: 3rem; margin-bottom: 20px;"></i>
-            <p>暂无学生提交的观察记录</p>
-            <p style="margin-top: 10px; font-size: 1rem;">请切换到学生界面填写观察记录</p>
-          </div>
-        `;
-        // 重新绑定按钮事件
-        document.getElementById('refresh-btn').addEventListener('click', async ()=>{
-          const snapshot = await getDocs(q);
-          const rs = snapshot.docs.map(d=>{
-            const data = d.data();
-            const millis = data.timestamp?.toMillis ? data.timestamp.toMillis() : 0;
-            return { id: d.id, ...data, timestamp: millis };
-          });
-          updateTeacherDashboard(rs);
-          showStatus('数据已刷新！', 'success');
-          setTimeout(clearStatus, 3000);
-        });
-        document.getElementById('clear-btn').addEventListener('click', async ()=>{
-          if(!confirm('确定要清空所有学生提交的记录吗？此操作不可恢复！')) return;
-          showStatus('正在清空数据...', 'success');
-          try{
-            const snapshot = await getDocs(colRef);
-            await Promise.all(snapshot.docs.map(docSnap => deleteDoc(doc(db, 'observations', docSnap.id))));
-            showStatus('所有记录已清空！', 'success');
-          }catch(err){
-            console.error('清空失败：', err);
-            showStatus('清空失败，请重试。', 'error');
-          }
-          setTimeout(clearStatus, 3000);
-        });
-        return;
-      }
+    // ——教师端：手动刷新（通常不需要）——
+    document.getElementById('refresh-btn').addEventListener('click', async ()=>{
+      const rs = await getDocs(query(colRef, orderBy('timestamp','desc')));
+      const rows = rs.docs.map(d=> ({ id: d.id, ...d.data(), timestamp: d.data().timestamp?.toMillis?.()||0 }));
+      updateTeacherDashboard(rows);
+      showStatus('数据已刷新', 'success');
+      setTimeout(clearStatus, 1500);
+    });
 
-      // 更新统计卡片
-      document.getElementById('total-submissions').textContent = records.length;
-      document.getElementById('today-submissions').textContent = getTodaySubmissions(records);
+    // ——实时订阅（关键！）——
+    const q = query(colRef, orderBy('timestamp','desc'));
+    onSnapshot(q, (snapshot)=>{
+      const rows = snapshot.docs.map(d=> ({ id: d.id, ...d.data(), timestamp: d.data().timestamp?.toMillis?.()||0 }));
+      updateTeacherDashboard(rows);
+    }, (err)=>{
+      console.error('订阅失败：', err);
+      showStatus('实时订阅失败', 'error');
+      setTimeout(clearStatus, 2500);
+    });
+  }
 
-      const { commonMethods, uniqueMethods, commonAspects, uniqueAspects } = analyzeRecords(records);
-      document.getElementById('common-methods-count').textContent = commonMethods.length;
-      document.getElementById('common-aspects-count').textContent = commonAspects.length;
-
-      updateAnalysisResults(commonMethods, uniqueMethods, commonAspects, uniqueAspects);
-      updateRecordsList(records);
+  /************ 4) 下面沿用你原本的渲染/分析函数 ************/
+  function updateTeacherDashboard(records){
+    const dash = document.querySelector('.teacher-dashboard');
+    if(!records || !records.length){
+      dash.querySelector('#total-submissions').textContent = 0;
+      dash.querySelector('#today-submissions').textContent = 0;
+      dash.querySelector('#common-methods-count').textContent = 0;
+      dash.querySelector('#common-aspects-count').textContent = 0;
+      ['common-methods','unique-methods','common-aspects','unique-aspects','records-container']
+        .forEach(id=> document.getElementById(id).innerHTML = '');
+      document.getElementById('records-container').innerHTML = '<p style="text-align:center;padding:20px;">暂无学生提交记录</p>';
+      return;
     }
+    document.getElementById('total-submissions').textContent = records.length;
+    document.getElementById('today-submissions').textContent = getTodaySubmissions(records);
+    const { commonMethods, uniqueMethods, commonAspects, uniqueAspects } = analyzeRecords(records);
+    document.getElementById('common-methods-count').textContent = commonMethods.length;
+    document.getElementById('common-aspects-count').textContent = commonAspects.length;
+    updateAnalysisResults(commonMethods, uniqueMethods, commonAspects, uniqueAspects);
+    updateRecordsList(records);
+  }
 
-    function getTodaySubmissions(records){
-      const today = new Date().toLocaleDateString('zh-CN');
-      return records.filter(r => r.date === today).length;
+  function getTodaySubmissions(records){
+    const today = new Date().toLocaleDateString('zh-CN');
+    return records.filter(r=> (r.date||'') === today).length;
+  }
+
+  function analyzeRecords(records){
+    const ms=[], as=[];
+    records.forEach(r=>{ if(r.method) ms.push(String(r.method)); if(r.aspect) as.push(String(r.aspect)); });
+    const mc = countAndGroupSimilarItems(ms), ac = countAndGroupSimilarItems(as);
+    const commonMethods = Object.entries(mc).filter(([,c])=>c>=3).map(([item,count])=>({item,count}));
+    const uniqueMethods = Object.entries(mc).filter(([,c])=>c<3).map(([item,count])=>({item,count}));
+    const commonAspects = Object.entries(ac).filter(([,c])=>c>=3).map(([item,count])=>({item,count}));
+    const uniqueAspects = Object.entries(ac).filter(([,c])=>c<3).map(([item,count])=>({item,count}));
+    return { commonMethods, uniqueMethods, commonAspects, uniqueAspects };
+  }
+
+  function countAndGroupSimilarItems(items){
+    const counts={};
+    items.forEach(t=>{
+      const n=t.trim().toLowerCase();
+      let hit=false;
+      for(const k in counts){ if(isSimilar(n,k)){ counts[k]++; hit=true; break; } }
+      if(!hit) counts[n]=1;
+    });
+    return counts;
+  }
+  function isSimilar(a,b){ if(a===b) return true; if(a.includes(b)||b.includes(a)) return true;
+    const d=lev(a,b), L=Math.max(a.length,b.length)||1; return d<=L/3; }
+  function lev(a,b){ const m=[]; for(let i=0;i<=b.length;i++){ m[i]=[i]; } for(let j=0;j<=a.length;j++){ m[0][j]=j; }
+    for(let i=1;i<=b.length;i++){ for(let j=1;j<=a.length;j++){
+      m[i][j]=(b[i-1]===a[j-1])?m[i-1][j-1]:Math.min(m[i-1][j-1]+1,m[i][j-1]+1,m[i-1][j]+1);
+    }} return m[b.length][a.length]; }
+  function updateAnalysisResults(cm,um,ca,ua){
+    const set = (id, arr, cls, empty)=> {
+      const c=document.getElementById(id); c.innerHTML = arr.length? '' : `<p style="color:#666;text-align:center;">${empty}</p>`;
+      arr.forEach(x=>{ const el=document.createElement('div'); el.className=cls; el.textContent=`${x.item} (${x.count})`; c.appendChild(el); });
+    };
+    set('common-methods', cm, 'common-item', '暂无共性方法');
+    set('unique-methods', um, 'unique-item', '暂无个性方法');
+    set('common-aspects', ca, 'common-item', '暂无共性特征');
+    set('unique-aspects', ua, 'unique-item', '暂无个性特征');
+  }
+  function updateRecordsList(records){
+    const c=document.getElementById('records-container'); c.innerHTML='';
+    const sorted=[...records].sort((a,b)=>(b.timestamp||0)-(a.timestamp||0)).slice(0,10);
+    if(!sorted.length){ c.innerHTML='<p style="text-align:center;padding:20px;">暂无学生提交记录</p>'; return; }
+    sorted.forEach(r=>{
+      const el=document.createElement('div'); el.className='record-item';
+      el.innerHTML=`
+        <div class="record-date"><strong>提交时间:</strong> ${r.date||'—'}</div>
+        <div class="record-methods"><strong>观察方法:</strong> ${escapeHtml(r.method||'')}</div>
+        <div class="record-aspects"><strong>观察特征:</strong> ${escapeHtml(r.aspect||'')}</div>`;
+      c.appendChild(el);
+    });
+    if(records.length>10){
+      const more=document.createElement('div'); more.className='record-item'; more.style.textAlign='center'; more.style.color='#666';
+      more.textContent=`还有 ${records.length-10} 条记录未显示`; c.appendChild(more);
     }
-
-    function analyzeRecords(records){
-      const allMethods = [];
-      const allAspects = [];
-      records.forEach(r=>{
-        if (r.method) allMethods.push(String(r.method));
-        if (r.aspect) allAspects.push(String(r.aspect));
-      });
-      const methodCounts = countAndGroupSimilarItems(allMethods);
-      const aspectCounts = countAndGroupSimilarItems(allAspects);
-
-      const commonMethods = Object.entries(methodCounts).filter(([,c])=>c>=3).map(([item,count])=>({item,count}));
-      const uniqueMethods = Object.entries(methodCounts).filter(([,c])=>c<3).map(([item,count])=>({item,count}));
-      const commonAspects = Object.entries(aspectCounts).filter(([,c])=>c>=3).map(([item,count])=>({item,count}));
-      const uniqueAspects = Object.entries(aspectCounts).filter(([,c])=>c<3).map(([item,count])=>({item,count}));
-
-      return { commonMethods, uniqueMethods, commonAspects, uniqueAspects };
-    }
-
-    function countAndGroupSimilarItems(items){
-      const counts = {};
-      items.forEach(raw=>{
-        const normalized = raw.trim().toLowerCase();
-        let found = false;
-        for(const key in counts){
-          if(isSimilar(normalized, key)){ counts[key]++; found = true; break; }
-        }
-        if(!found) counts[normalized] = 1;
-      });
-      return counts;
-    }
-
-    function isSimilar(a,b){
-      if(a===b) return true;
-      if(a.includes(b) || b.includes(a)) return true;
-      const d = levenshtein(a,b);
-      const L = Math.max(a.length,b.length) || 1;
-      return d <= L/3;
-    }
-
-    function levenshtein(a,b){
-      const m = [];
-      for(let i=0;i<=b.length;i++){ m[i]=[i]; }
-      for(let j=0;j<=a.length;j++){ m[0][j]=j; }
-      for(let i=1;i<=b.length;i++){
-        for(let j=1;j<=a.length;j++){
-          m[i][j] = (b[i-1]===a[j-1])
-            ? m[i-1][j-1]
-            : Math.min(m[i-1][j-1]+1, m[i][j-1]+1, m[i-1][j]+1);
-        }
-      }
-      return m[b.length][a.length];
-    }
-
-    function updateAnalysisResults(commonMethods, uniqueMethods, commonAspects, uniqueAspects){
-      const cm = document.getElementById('common-methods'); cm.innerHTML = commonMethods.length? '' : '<p style="color:#666;text-align:center;">暂无共性方法</p>';
-      const um = document.getElementById('unique-methods'); um.innerHTML = uniqueMethods.length? '' : '<p style="color:#666;text-align:center;">暂无个性方法</p>';
-      const ca = document.getElementById('common-aspects'); ca.innerHTML = commonAspects.length? '' : '<p style="color:#666;text-align:center;">暂无共性特征</p>';
-      const ua = document.getElementById('unique-aspects'); ua.innerHTML = uniqueAspects.length? '' : '<p style="color:#666;text-align:center;">暂无个性特征</p>';
-
-      commonMethods.forEach(x=>{ const el=document.createElement('div'); el.className='common-item'; el.textContent=`${x.item} (${x.count})`; cm.appendChild(el); });
-      uniqueMethods.forEach(x=>{ const el=document.createElement('div'); el.className='unique-item'; el.textContent=`${x.item} (${x.count})`; um.appendChild(el); });
-      commonAspects.forEach(x=>{ const el=document.createElement('div'); el.className='common-item'; el.textContent=`${x.item} (${x.count})`; ca.appendChild(el); });
-      uniqueAspects.forEach(x=>{ const el=document.createElement('div'); el.className='unique-item'; el.textContent=`${x.item} (${x.count})`; ua.appendChild(el); });
-    }
-
-    function updateRecordsList(records){
-      const container = document.getElementById('records-container');
-      container.innerHTML = '';
-      if(!records.length){
-        container.innerHTML = '<p style="text-align:center;padding:20px;">暂无学生提交记录</p>';
-        return;
-      }
-      // 按时间倒序（firestore 查询已倒序，但这里再保险）
-      records.sort((a,b)=> (b.timestamp||0) - (a.timestamp||0));
-      const recent = records.slice(0,10);
-      recent.forEach(r=>{
-        const el = document.createElement('div');
-        el.className='record-item';
-        const dateStr = r.date || '—';
-        el.innerHTML = `
-          <div class="record-date"><strong>提交时间:</strong> ${dateStr}</div>
-          <div class="record-methods"><strong>观察方法:</strong> ${escapeHtml(r.method||'')}</div>
-          <div class="record-aspects"><strong>观察特征:</strong> ${escapeHtml(r.aspect||'')}</div>
-        `;
-        container.appendChild(el);
-      });
-      if(records.length>10){
-        const more=document.createElement('div');
-        more.className='record-item'; more.style.textAlign='center'; more.style.color='#666';
-        more.textContent = `还有 ${records.length-10} 条记录未显示`;
-        container.appendChild(more);
-      }
-    }
-
-    function escapeHtml(str){
-      return String(str).replace(/[&<>"']/g, s=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[s]));
-    }
-
-    /************ 7) 状态提示 ************/
-    function showStatus(message,type){
-      clearStatus();
-      const el = document.createElement('div');
-      el.className = `status-message ${type}`;
-      el.textContent = message;
-      el.id = 'status-message';
-      document.querySelector('.container').insertBefore(el, document.querySelector('.tab-container'));
-    }
-    function clearStatus(){
-      const el = document.getElementById('status-message');
-      if(el) el.remove();
-    }
-  </script>
+  }
+  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
+  function showStatus(msg,type){ clearStatus(); const el=document.createElement('div'); el.className=`status-message ${type}`; el.textContent=msg; el.id='status-message';
+    document.querySelector('.container').insertBefore(el, document.querySelector('.tab-container')); }
+  function clearStatus(){ const el=document.getElementById('status-message'); if(el) el.remove(); }
+</script>
 </body>
 </html>

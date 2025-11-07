@@ -169,34 +169,15 @@
 
   <!-- 实时后端：Firebase Firestore（模块版 SDK） -->
 <script type="module">
-  /************ 0) 导入 Firebase SDK（模块版） ************/
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
-  import {
-    getAuth, signInAnonymously, onAuthStateChanged
-  } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js";
-  import {
-    getFirestore, collection, addDoc, serverTimestamp,
-    query, orderBy, onSnapshot, getDocs, deleteDoc, doc,
-    enableIndexedDbPersistence
-  } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
+  import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-  /************ 1) 填写你的 Firebase 配置 ************/
-  // Firebase 控制台 → Project settings → Your apps → Web app → SDK config
-  const firebaseConfig = {
-  apiKey: "AIzaSyCeKYaCD48fNkxt5tyvvbrNj8GRoT4MXRI",
-  authDomain: "yanshi-dd64f.firebaseapp.com",
-  projectId: "yanshi-dd64f",
-  storageBucket: "yanshi-dd64f.firebasestorage.app",
-  messagingSenderId: "413244464008",
-  appId: "1:413244464008:web:63b9890474f9125649f83d",
-  measurementId: "G-XDQ4W8QEDT"
-};
-  const app = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
-  const db = getFirestore(app);
-  enableIndexedDbPersistence(db).catch(()=>{ /* 多 Tab 冲突时忽略 */ });
+  // 1) 用你的项目参数替换下面两项
+  const SUPABASE_URL = "https://fdgprrtllwycykgulbnz.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZkZ3BycnRsbHd5Y3lrZ3VsYm56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI1Mjg4MDksImV4cCI6MjA3ODEwNDgwOX0.tWyXbTgj9XnKcFqo9qmKw-u6WRTJoGBCkDswi3ZwBRU";
 
-  /************ 2) UI：标签切换（保留你原逻辑） ************/
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // 2) 标签切换（保留你的逻辑）
   document.querySelectorAll('.tab').forEach(tab=>{
     tab.addEventListener('click', ()=>{
       document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
@@ -206,89 +187,82 @@
     });
   });
 
-  /************ 3) 登录（匿名）后再开始读写 ************/
-  onAuthStateChanged(auth, (user)=>{
-    if (user) {
-      boot(user.uid);
-    } else {
-      signInAnonymously(auth).catch(err=>{
-        console.error('匿名登录失败：', err);
-        showStatus('无法连接云端（登录失败）', 'error');
-      });
-    }
-  });
+  // 3) 学生端提交：insert
+  document.querySelectorAll('.pair-submit-btn').forEach(btn=>{
+    btn.addEventListener('click', async function(e){
+      e.preventDefault();
+      const n=this.getAttribute('data-pair');
+      const methodInput=document.getElementById(`method${n}`);
+      const aspectInput=document.getElementById(`aspect${n}`);
+      const method=(methodInput.value||'').trim();
+      const aspect=(aspectInput.value||'').trim();
+      if(!method){ alert('请填写观察方法！'); methodInput.focus(); return; }
+      if(!aspect){ alert('请填写观察特征！'); aspectInput.focus(); return; }
 
-  async function boot(uid){
-    const colRef = collection(db, "observations");
-
-    // ——学生端：提交（写云端 Firestore）——
-    document.querySelectorAll('.pair-submit-btn').forEach(btn=>{
-      btn.addEventListener('click', async function(e){
-        e.preventDefault();
-        const n = this.getAttribute('data-pair');
-        const methodInput = document.getElementById(`method${n}`);
-        const aspectInput = document.getElementById(`aspect${n}`);
-        const method = (methodInput.value||'').trim();
-        const aspect = (aspectInput.value||'').trim();
-        if(!method){ alert('请填写观察方法！'); methodInput.focus(); return; }
-        if(!aspect){ alert('请填写观察特征！'); aspectInput.focus(); return; }
-
-        showStatus('正在提交数据...', 'success');
-        try{
-          await addDoc(colRef, {
-            method, aspect,
-            date: new Date().toLocaleDateString('zh-CN'),
-            timestamp: serverTimestamp(),   // 排序用服务器时间
-            createdAt: serverTimestamp(),
-            uid
-          });
-          showStatus('提交成功！多端已同步', 'success');
-          methodInput.value = ''; aspectInput.value = '';
-        }catch(err){
-          console.error(err);
-          showStatus('提交失败，请检查网络', 'error');
-        }
-        setTimeout(clearStatus, 2500);
-      });
-    });
-
-    // ——教师端：清空（逐条删）——
-    document.getElementById('clear-btn').addEventListener('click', async ()=>{
-      if(!confirm('确定要清空所有记录吗？')) return;
-      showStatus('正在清空数据...', 'success');
+      showStatus('正在提交数据...', 'success');
       try{
-        const snap = await getDocs(colRef);
-        await Promise.all(snap.docs.map(d=> deleteDoc(doc(db,'observations', d.id))));
-        showStatus('已清空', 'success');
+        const now=Date.now();
+        const { error } = await supabase.from('observations').insert({
+          method, aspect,
+          date: new Date(now).toLocaleDateString('zh-CN'),
+          timestamp: now
+        });
+        if(error) throw error;
+        showStatus('提交成功！多端已同步', 'success');
+        methodInput.value=''; aspectInput.value='';
       }catch(err){
         console.error(err);
-        showStatus('清空失败', 'error');
+        showStatus('提交失败，请检查网络/策略', 'error');
       }
       setTimeout(clearStatus, 2500);
     });
+  });
 
-    // ——教师端：手动刷新（通常不需要）——
-    document.getElementById('refresh-btn').addEventListener('click', async ()=>{
-      const rs = await getDocs(query(colRef, orderBy('timestamp','desc')));
-      const rows = rs.docs.map(d=> ({ id: d.id, ...d.data(), timestamp: d.data().timestamp?.toMillis?.()||0 }));
-      updateTeacherDashboard(rows);
-      showStatus('数据已刷新', 'success');
-      setTimeout(clearStatus, 1500);
-    });
+  // 4) 清空（批量删除）
+  document.getElementById('clear-btn').addEventListener('click', async ()=>{
+    if(!confirm('确定要清空所有记录吗？')) return;
+    showStatus('正在清空数据...', 'success');
+    try{
+      const { error } = await supabase.from('observations')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000'); // 防止空 where
+      if(error) throw error;
+      showStatus('已清空', 'success');
+    }catch(err){
+      console.error(err);
+      showStatus('清空失败', 'error');
+    }
+    setTimeout(clearStatus, 2500);
+  });
 
-    // ——实时订阅（关键！）——
-    const q = query(colRef, orderBy('timestamp','desc'));
-    onSnapshot(q, (snapshot)=>{
-      const rows = snapshot.docs.map(d=> ({ id: d.id, ...d.data(), timestamp: d.data().timestamp?.toMillis?.()||0 }));
-      updateTeacherDashboard(rows);
-    }, (err)=>{
-      console.error('订阅失败：', err);
-      showStatus('实时订阅失败', 'error');
+  // 5) 首次加载 + Realtime 订阅
+  await fetchAndRender();
+
+  const channel = supabase
+    .channel('obs-change')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'observations' }, () => {
+      fetchAndRender(); // 量小场景用全量刷新最简单可靠
+    })
+    .subscribe();
+
+  async function fetchAndRender(){
+    const { data, error } = await supabase
+      .from('observations')
+      .select('*')
+      .order('timestamp', { ascending: false });
+    if(error){
+      console.error(error);
+      showStatus('加载失败', 'error');
       setTimeout(clearStatus, 2500);
-    });
+      return;
+    }
+    updateTeacherDashboard(data||[]);
   }
 
-  /************ 4) 下面沿用你原本的渲染/分析函数 ************/
+  // 6) 手动刷新按钮
+  document.getElementById('refresh-btn').addEventListener('click', fetchAndRender);
+
+  // ========= 以下沿用你现有的函数，无需修改 =========
   function updateTeacherDashboard(records){
     const dash = document.querySelector('.teacher-dashboard');
     if(!records || !records.length){
@@ -309,12 +283,10 @@
     updateAnalysisResults(commonMethods, uniqueMethods, commonAspects, uniqueAspects);
     updateRecordsList(records);
   }
-
   function getTodaySubmissions(records){
     const today = new Date().toLocaleDateString('zh-CN');
     return records.filter(r=> (r.date||'') === today).length;
   }
-
   function analyzeRecords(records){
     const ms=[], as=[];
     records.forEach(r=>{ if(r.method) ms.push(String(r.method)); if(r.aspect) as.push(String(r.aspect)); });
@@ -325,7 +297,6 @@
     const uniqueAspects = Object.entries(ac).filter(([,c])=>c<3).map(([item,count])=>({item,count}));
     return { commonMethods, uniqueMethods, commonAspects, uniqueAspects };
   }
-
   function countAndGroupSimilarItems(items){
     const counts={};
     items.forEach(t=>{
@@ -374,5 +345,6 @@
     document.querySelector('.container').insertBefore(el, document.querySelector('.tab-container')); }
   function clearStatus(){ const el=document.getElementById('status-message'); if(el) el.remove(); }
 </script>
+
 </body>
 </html>

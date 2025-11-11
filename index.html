@@ -183,10 +183,13 @@
     });
   });
 
-  // 3) 学生端提交：insert
+ // 3) 学生端提交：insert
   document.querySelectorAll('.pair-submit-btn').forEach(btn=>{
     btn.addEventListener('click', async function(e){
       e.preventDefault();
+
+      // 如果按钮已经禁用，直接返回
+      if (this.disabled) return;
       const n=this.getAttribute('data-pair');
       const methodInput=document.getElementById(`method${n}`);
       const aspectInput=document.getElementById(`aspect${n}`);
@@ -194,6 +197,11 @@
       const aspect=(aspectInput.value||'').trim();
       if(!method){ alert('请填写观察方法！'); methodInput.focus(); return; }
       if(!aspect){ alert('请填写观察特征！'); aspectInput.focus(); return; }
+
+      // 立即禁用按钮
+      this.disabled = true;
+      this.style.opacity = '0.6';
+      this.style.cursor = 'not-allowed';
 
       showStatus('正在提交数据...', 'success');
       try{
@@ -208,6 +216,10 @@
       }catch(err){
         console.error(err);
         showStatus('提交失败，请检查网络/策略', 'error');
+        // 如果提交失败，重新启用按钮
+        this.disabled = false;
+        this.style.opacity = '1';
+        this.style.cursor = 'pointer';
       }
       setTimeout(clearStatus, 2500);
     });
@@ -311,7 +323,11 @@
   function updateAnalysisResults(cm,um,ca,ua){
     const set = (id, arr, cls, empty)=> {
       const c=document.getElementById(id); c.innerHTML = arr.length? '' : `<p style="color:#666;text-align:center;">${empty}</p>`;
-      arr.forEach(x=>{ const el=document.createElement('div'); el.className=cls; el.textContent=`${x.item} (${x.count})`; c.appendChild(el); });
+      arr.forEach(x=>{ const el=document.createElement('div'); el.className=cls; el.textContent=`${x.item} (${x.count})`; 
+        // 设置黑色字体和增大字号
+        el.style.color = '#000000';
+        el.style.fontSize = '25px'; // 可以根据需要调整大小，如14px、18px等
+        c.appendChild(el); });
     };
     set('common-methods', cm, 'common-item', '暂无共性方法');
     set('unique-methods', um, 'unique-item', '暂无个性方法');
@@ -343,4 +359,5 @@
 
 </body>
 </html>
+
 

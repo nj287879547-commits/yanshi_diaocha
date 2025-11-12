@@ -298,10 +298,10 @@
     const ms=[], as=[];
     records.forEach(r=>{ if(r.method) ms.push(String(r.method)); if(r.aspect) as.push(String(r.aspect)); });
     const mc = countAndGroupSimilarItems(ms), ac = countAndGroupSimilarItems(as);
-    const commonMethods = Object.entries(mc).filter(([,c])=>c>=3).map(([item,count])=>({item,count}));
-    const uniqueMethods = Object.entries(mc).filter(([,c])=>c<3).map(([item,count])=>({item,count}));
-    const commonAspects = Object.entries(ac).filter(([,c])=>c>=3).map(([item,count])=>({item,count}));
-    const uniqueAspects = Object.entries(ac).filter(([,c])=>c<3).map(([item,count])=>({item,count}));
+    const commonMethods = Object.entries(mc).filter(([,c])=>c>=8).map(([item,count])=>({item,count}));
+    const uniqueMethods = Object.entries(mc).filter(([,c])=>c<8).map(([item,count])=>({item,count}));
+    const commonAspects = Object.entries(ac).filter(([,c])=>c>=8).map(([item,count])=>({item,count}));
+    const uniqueAspects = Object.entries(ac).filter(([,c])=>c<8).map(([item,count])=>({item,count}));
     return { commonMethods, uniqueMethods, commonAspects, uniqueAspects };
   }
   function countAndGroupSimilarItems(items){
@@ -359,5 +359,6 @@
 
 </body>
 </html>
+
 
 
